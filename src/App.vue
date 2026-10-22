@@ -28,13 +28,8 @@ const workouts = ref(loadWorkouts())
 const activeTab = ref('home')
 const editingWorkoutId = ref(null)
 
-watch(
-  workouts,
-  (value) => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(value))
-  },
-  { deep: true }
-)
+
+
 
 const workoutForm = ref({
   date: getToday(),
@@ -48,6 +43,62 @@ const exerciseForm = ref({
 })
 
 const exercises = ref([])
+watch(
+  [workoutForm, exerciseForm, exercises, editingWorkoutId],
+  () => {
+    if (isResettingWorkout) return
+    saveWorkoutDraft()
+  },
+  { deep: true }
+)
+const DRAFT_KEY = 'gaintrack_workout_draft'
+let isResettingWorkout = false
+// 保存当前训练草稿
+function saveWorkoutDraft() {
+  // 没有正在编辑的动作时，也保存日期、部位等表单信息
+  const draft = {
+    editingWorkoutId: editingWorkoutId.value,
+    workoutForm: JSON.parse(JSON.stringify(workoutForm.value)),
+    exerciseForm: JSON.parse(JSON.stringify(exerciseForm.value)),
+    exercises: JSON.parse(JSON.stringify(exercises.value))
+  }
+
+  localStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
+}
+
+// 恢复上次未完成的训练草稿
+function restoreWorkoutDraft() {
+  const savedDraft = localStorage.getItem(DRAFT_KEY)
+
+  if (!savedDraft) return false
+
+  try {
+    const draft = JSON.parse(savedDraft)
+
+    if (!draft || !draft.workoutForm || !Array.isArray(draft.exercises)) {
+      return false
+    }
+
+    editingWorkoutId.value = draft.editingWorkoutId ?? null
+    workoutForm.value = draft.workoutForm
+    exerciseForm.value = draft.exerciseForm ?? {
+      name: '',
+      initialSets: 3
+    }
+    exercises.value = draft.exercises
+
+    return true
+  } catch (error) {
+    console.error('恢复训练草稿失败：', error)
+    localStorage.removeItem(DRAFT_KEY)
+    return false
+  }
+}
+
+// 清除训练草稿
+function clearWorkoutDraft() {
+  localStorage.removeItem(DRAFT_KEY)
+}
 
 const muscleOptions = ['胸部', '背部', '肩部', '手臂', '腿部', '全身']
 
@@ -243,7 +294,19 @@ function removeExercise(index) {
   exercises.value.splice(index, 1)
 }
 
-function startNewWorkout() {
+
+
+function startNewWorkout(forceNew = false) {
+  // 非强制新建时，优先恢复未完成的草稿
+  if (!forceNew) {
+    const restored = restoreWorkoutDraft()
+
+    if (restored) {
+      activeTab.value = 'train'
+      return
+    }
+  }
+
   editingWorkoutId.value = null
   workoutForm.value = {
     date: getToday(),
@@ -255,8 +318,25 @@ function startNewWorkout() {
     name: '',
     initialSets: 3
   }
+
   activeTab.value = 'train'
 }
+
+function openWorkout() {
+  // 如果当前已经在训练页面，不重置表单
+  if (activeTab.value === 'train') return
+
+  // 如果当前不是训练页面，尝试恢复未完成的草稿
+  const restored = restoreWorkoutDraft()
+
+  if (!restored) {
+    startNewWorkout(true)
+    return
+  }
+
+  activeTab.value = 'train'
+}
+
 
 function editWorkout(workout) {
   editingWorkoutId.value = workout.id
@@ -326,9 +406,10 @@ function saveWorkout() {
     workouts.value.push(workout)
   }
 
-  startNewWorkout()
-  activeTab.value = 'history'
-  alert('训练记录已保存！')
+clearWorkoutDraft()
+startNewWorkout(true)
+activeTab.value = 'history'
+alert('训练记录已保存！')
 }
 
 function deleteWorkout(id) {
@@ -644,7 +725,7 @@ function totalSets(workout) {
       <button :class="{ active: activeTab === 'home' }" @click="activeTab = 'home'">
         <span>⌂</span>首页
       </button>
-      <button :class="{ active: activeTab === 'train' }" @click="startNewWorkout">
+      <button :class="{ active: activeTab === 'train' }" @click="openWorkout">
         <span>＋</span>训练
       </button>
       <button :class="{ active: activeTab === 'history' }" @click="activeTab = 'history'">
@@ -1150,7 +1231,7 @@ textarea {
   background: #f5f7f4;
   --panel: #ffffff;
   --panel-light: #f1f4ef;
-  --muted: #747c75;
+  --muted: #010902ff;
   --accent: #58852c;
   --border: #e1e6df;
 }
