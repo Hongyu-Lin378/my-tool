@@ -28,7 +28,13 @@ const workouts = ref(loadWorkouts())
 const activeTab = ref('home')
 const editingWorkoutId = ref(null)
 
-
+watch(
+  workouts,
+  (value) => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(value))
+  },
+  { deep: true }
+)
 
 
 const workoutForm = ref({
